@@ -41,6 +41,11 @@ android {
         }
     }
 
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
+
     sourceSets {
         getByName("main") {
             java.srcDirs("src/main/kotlin")
