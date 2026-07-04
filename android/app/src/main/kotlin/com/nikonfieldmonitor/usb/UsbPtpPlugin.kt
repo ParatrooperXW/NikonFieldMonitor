@@ -213,11 +213,27 @@ class UsbPtpPlugin(private val ctx: Context) : FlutterPlugin, MethodChannel.Meth
         val pi = PendingIntent.getBroadcast(ctx, 0,
             Intent(USB_PERMISSION_ACTION).setPackage(ctx.packageName), intentFlags)
         usbManager.requestPermission(device, pi)
-        for (i in 0 until 30) {
-            if (usbManager.hasPermission(device)) return true
-            Thread.sleep(100)
+        // Poll with small delay, but run on a background thread to avoid ANR
+        val lock = Object()
+        var granted = false
+        val thread = Thread {
+            try {
+                for (i in 0 until 50) {
+                    if (usbManager.hasPermission(device)) {
+                        granted = true
+                        break
+                    }
+                    Thread.sleep(100)
+                }
+            } catch (_: InterruptedException) {
+            }
+            synchronized(lock) { (lock as Object).notify() }
         }
-        return usbManager.hasPermission(device)
+        thread.start()
+        synchronized(lock) {
+            try { (lock as Object).wait(5000) } catch (_: InterruptedException) {}
+        }
+        return granted || usbManager.hasPermission(device)
     }
 
     private fun openSession(deviceId: String, result: MethodChannel.Result) {

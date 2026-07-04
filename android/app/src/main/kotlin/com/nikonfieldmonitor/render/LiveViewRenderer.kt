@@ -114,103 +114,112 @@ class LiveViewRenderer(
     }
 
     override fun onDrawFrame(gl: GL10?) {
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+        try {
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
-        // Upload any pending JPEG into frameTexture.
-        synchronized(pendingLock) {
-            val jpeg = pendingJpeg
-            if (jpeg != null) {
-                uploadJpegToTexture(jpeg)
-                pendingJpeg = null
+            // Upload any pending JPEG into frameTexture.
+            synchronized(pendingLock) {
+                val jpeg = pendingJpeg
+                if (jpeg != null) {
+                    uploadJpegToTexture(jpeg)
+                    pendingJpeg = null
+                }
             }
-        }
 
-        // Stage 1: pass through frameTexture with optional LUT / false color.
-        // We render into the FBO so the later peaking/zebra passes can sample
-        // a single intermediate texture.
-        val lutEnabled = settings.lutEnabled && !settings.falseColorEnabled && activeLutId != null
-        val falseColorEnabled = settings.falseColorEnabled
+            if (frameTexture == 0 || fbo == 0) return
 
-        val stageProgram = when {
-            falseColorEnabled -> falseColorProgram
-            lutEnabled -> lutProgram
-            else -> lutProgram // LUT pass with uEnabled=0 = passthrough
-        }
-        stageProgram!!.use()
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
-        GLES20.glViewport(0, 0, fboWidth, fboHeight)
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+            // Stage 1: pass through frameTexture with optional LUT / false color.
+            val lutEnabled = settings.lutEnabled && !settings.falseColorEnabled && activeLutId != null
+            val falseColorEnabled = settings.falseColorEnabled
 
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, frameTexture)
-        GLES20.glUniform1i(stageProgram.uniform("uTexture"), 0)
-        GLES20.glUniform1i(stageProgram.uFlipY, 1)
-
-        if (falseColorEnabled) {
-            GLES20.glUniform1i(stageProgram.uniform("uEnabled"), 1)
-        } else if (lutEnabled) {
-            val (lutTex, size) = luts[activeLutId] ?: (0 to 0)
-            GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lutTex)
-            GLES20.glUniform1i(stageProgram.uniform("uLut"), 1)
-            GLES20.glUniform1f(stageProgram.uniform("uLutSize"), size.toFloat())
-            GLES20.glUniform1i(stageProgram.uniform("uEnabled"), 1)
-        } else {
-            GLES20.glUniform1i(stageProgram.uniform("uEnabled"), 0)
-        }
-        drawQuad(stageProgram)
-
-        // Stages 4-5: peaking + zebra blend on top, into the FBO as well.
-        if (settings.peakingEnabled) {
-            val peakProg = peakingProgram ?: return
-            peakProg.use()
+            val stageProgram = when {
+                falseColorEnabled -> falseColorProgram
+                lutEnabled -> lutProgram
+                else -> lutProgram
+            } ?: return
+            stageProgram.use()
             GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
             GLES20.glViewport(0, 0, fboWidth, fboHeight)
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, frameTexture)
+            GLES20.glUniform1i(stageProgram.uniform("uTexture"), 0)
+            GLES20.glUniform1i(stageProgram.uFlipY, 1)
+
+            if (falseColorEnabled) {
+                GLES20.glUniform1i(stageProgram.uniform("uEnabled"), 1)
+            } else if (lutEnabled) {
+                val lutPair = luts[activeLutId]
+                if (lutPair != null) {
+                    GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+                    GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lutPair.first)
+                    GLES20.glUniform1i(stageProgram.uniform("uLut"), 1)
+                    GLES20.glUniform1f(stageProgram.uniform("uLutSize"), lutPair.second.toFloat())
+                    GLES20.glUniform1i(stageProgram.uniform("uEnabled"), 1)
+                } else {
+                    GLES20.glUniform1i(stageProgram.uniform("uEnabled"), 0)
+                }
+            } else {
+                GLES20.glUniform1i(stageProgram.uniform("uEnabled"), 0)
+            }
+            drawQuad(stageProgram)
+
+            // Peaking pass
+            if (settings.peakingEnabled && peakingProgram != null) {
+                val peakProg = peakingProgram!!
+                peakProg.use()
+                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
+                GLES20.glViewport(0, 0, fboWidth, fboHeight)
+                GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, fboTexture)
+                GLES20.glUniform1i(peakProg.uniform("uTexture"), 0)
+                GLES20.glUniform1i(peakProg.uFlipY, 0)
+                GLES20.glUniform2f(
+                    peakProg.uniform("uTexelSize"),
+                    1f / fboWidth, 1f / fboHeight,
+                )
+                val peakColor = peakingColorRgb(settings.peakingColor)
+                GLES20.glUniform3f(
+                    peakProg.uniform("uOverlayColor"),
+                    peakColor[0], peakColor[1], peakColor[2],
+                )
+                GLES20.glUniform1i(peakProg.uniform("uSensitivity"), settings.peakingSensitivity)
+                GLES20.glUniform1i(peakProg.uniform("uEnabled"), 1)
+                drawQuad(peakProg)
+            }
+
+            // Zebra pass
+            if (settings.zebraEnabled && zebraProgram != null) {
+                val zebProg = zebraProgram!!
+                zebProg.use()
+                GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
+                GLES20.glViewport(0, 0, fboWidth, fboHeight)
+                GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, fboTexture)
+                GLES20.glUniform1i(zebProg.uniform("uTexture"), 0)
+                GLES20.glUniform1i(zebProg.uFlipY, 0)
+                GLES20.glUniform2f(zebProg.uniform("uResolution"), fboWidth.toFloat(), fboHeight.toFloat())
+                GLES20.glUniform1f(zebProg.uniform("uLowerIre"), settings.zebraLowerIre.toFloat())
+                GLES20.glUniform1f(zebProg.uniform("uUpperIre"), settings.zebraUpperIre.toFloat())
+                GLES20.glUniform1i(zebProg.uniform("uEnabled"), 1)
+                drawQuad(zebProg)
+            }
+
+            // Final blit: fboTexture -> default framebuffer
+            val finalProg = lutProgram ?: return
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+            GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
+            finalProg.use()
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, fboTexture)
-            GLES20.glUniform1i(peakProg.uniform("uTexture"), 0)
-            GLES20.glUniform1i(peakProg.uFlipY, 0)
-            GLES20.glUniform2f(
-                peakProg.uniform("uTexelSize"),
-                1f / fboWidth, 1f / fboHeight,
-            )
-            val peakColor = peakingColorRgb(settings.peakingColor)
-            GLES20.glUniform3f(
-                peakProg.uniform("uOverlayColor"),
-                peakColor[0], peakColor[1], peakColor[2],
-            )
-            GLES20.glUniform1i(peakProg.uniform("uSensitivity"), settings.peakingSensitivity)
-            GLES20.glUniform1i(peakProg.uniform("uEnabled"), 1)
-            drawQuad(peakProg)
+            GLES20.glUniform1i(finalProg.uniform("uTexture"), 0)
+            GLES20.glUniform1i(finalProg.uniform("uEnabled"), 0)
+            GLES20.glUniform1i(finalProg.uFlipY, 0)
+            drawQuad(finalProg)
+        } catch (e: Exception) {
+            Log.e(TAG, "onDrawFrame error", e)
         }
-
-        if (settings.zebraEnabled) {
-            val zebProg = zebraProgram ?: return
-            zebProg.use()
-            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbo)
-            GLES20.glViewport(0, 0, fboWidth, fboHeight)
-            GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, fboTexture)
-            GLES20.glUniform1i(zebProg.uniform("uTexture"), 0)
-            GLES20.glUniform1i(zebProg.uFlipY, 0)
-            GLES20.glUniform2f(zebProg.uniform("uResolution"), fboWidth.toFloat(), fboHeight.toFloat())
-            GLES20.glUniform1f(zebProg.uniform("uLowerIre"), settings.zebraLowerIre.toFloat())
-            GLES20.glUniform1f(zebProg.uniform("uUpperIre"), settings.zebraUpperIre.toFloat())
-            GLES20.glUniform1i(zebProg.uniform("uEnabled"), 1)
-            drawQuad(zebProg)
-        }
-
-        // Final blit: fboTexture -> default framebuffer (the SurfaceTexture).
-        val finalProg = lutProgram ?: return
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
-        GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
-        finalProg.use()
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, fboTexture)
-        GLES20.glUniform1i(finalProg.uniform("uTexture"), 0)
-        GLES20.glUniform1i(finalProg.uniform("uEnabled"), 0)
-        GLES20.glUniform1i(finalProg.uFlipY, 0)
-        drawQuad(finalProg)
     }
 
     private fun drawQuad(prog: ShaderProgram) {

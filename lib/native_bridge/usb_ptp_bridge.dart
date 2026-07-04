@@ -81,36 +81,62 @@ class UsbPtpBridge {
   }
 
   Future<List<UsbPtpDevice>> listUsbDevices() async {
-    final res = await _channel.invokeMethod<List>('listUsbDevices');
-    if (res == null) return const [];
-    return res
-        .cast<Map>()
-        .map((d) => UsbPtpDevice(
-              deviceId: d['deviceId'] as String,
-              productName: d['productName'] as String? ?? 'Unknown',
-              vendorId: (d['vendorId'] as num?)?.toInt() ?? 0,
-              productId: (d['productId'] as num?)?.toInt() ?? 0,
-            ))
-        .toList();
+    try {
+      final res = await _channel.invokeMethod<List>('listUsbDevices');
+      if (res == null) return const [];
+      return res
+          .cast<Map>()
+          .map((d) => UsbPtpDevice(
+                deviceId: d['deviceId'] as String,
+                productName: d['productName'] as String? ?? 'Unknown',
+                vendorId: (d['vendorId'] as num?)?.toInt() ?? 0,
+                productId: (d['productId'] as num?)?.toInt() ?? 0,
+              ))
+          .toList();
+    } on PlatformException catch (e) {
+      return const [];
+    } on MissingPluginException {
+      return const [];
+    }
   }
 
-  Future<bool> requestPermission(String deviceId) async =>
-      await _channel.invokeMethod<bool>('requestPermission', {'deviceId': deviceId}) ?? false;
+  Future<bool> requestPermission(String deviceId) async {
+    try {
+      return await _channel.invokeMethod<bool>('requestPermission', {'deviceId': deviceId}) ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
 
   Future<UsbPtpSession> open(String deviceId) async {
-    final res = await _channel.invokeMethod<Map>('open', {'deviceId': deviceId});
-    if (res == null) {
-      throw PlatformException(code: 'USB_OPEN', message: 'open returned null');
+    try {
+      final res = await _channel.invokeMethod<Map>('open', {'deviceId': deviceId});
+      if (res == null) {
+        throw PlatformException(code: 'USB_OPEN', message: 'open returned null');
+      }
+      return UsbPtpSession(
+        handle: (res['sessionHandle'] as num?)?.toInt() ?? 0,
+        model: res['model'] as String? ?? 'Unknown',
+        firmware: res['firmware'] as String? ?? '',
+      );
+    } on PlatformException {
+      rethrow;
+    } catch (e) {
+      throw PlatformException(code: 'USB_OPEN', message: e.toString());
     }
-    return UsbPtpSession(
-      handle: (res['sessionHandle'] as num?)?.toInt() ?? 0,
-      model: res['model'] as String? ?? 'Unknown',
-      firmware: res['firmware'] as String? ?? '',
-    );
   }
 
-  Future<void> close(int sessionHandle) =>
-      _channel.invokeMethod<void>('close', {'sessionHandle': sessionHandle});
+  Future<void> close(int sessionHandle) async {
+    try {
+      await _channel.invokeMethod<void>('close', {'sessionHandle': sessionHandle});
+    } on PlatformException {
+      // ignore
+    } on MissingPluginException {
+      // ignore
+    }
+  }
 
   Future<UsbPtpOpResult> operate(
     int sessionHandle,

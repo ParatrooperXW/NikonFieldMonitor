@@ -50,6 +50,10 @@ class RenderPlugin(private val appContext: Context) : FlutterPlugin, MethodChann
     private var renderThread: HandlerThread? = null
     private var renderHandler: Handler? = null
 
+    companion object {
+        private const val TAG = "RenderPlugin"
+    }
+
     override fun onAttachedToEngine(b: FlutterPlugin.FlutterPluginBinding) {
         binding = b
         methodChannel = MethodChannel(b.binaryMessenger, "nikon_field_monitor/render").also {
@@ -83,68 +87,80 @@ class RenderPlugin(private val appContext: Context) : FlutterPlugin, MethodChann
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-        when (call.method) {
-            "createTexture" -> createTexture(result)
-            "releaseTexture" -> {
-                val id = (call.argument<Number>("textureId") ?: -1).toLong()
-                renderers[id]?.release()
-                renderers.remove(id)
-                result.success(null)
+        try {
+            when (call.method) {
+                "createTexture" -> createTexture(result)
+                "releaseTexture" -> {
+                    val id = (call.argument<Number>("textureId") ?: -1).toLong()
+                    renderers[id]?.release()
+                    renderers.remove(id)
+                    result.success(null)
+                }
+                "pushJpegFrame" -> {
+                    val id = (call.argument<Number>("textureId") ?: -1).toLong()
+                    val jpeg = call.argument<ByteArray>("jpeg")
+                    renderers[id]?.pushJpeg(jpeg ?: ByteArray(0))
+                    result.success(null)
+                }
+                "pushRgbaFrame" -> {
+                    val id = (call.argument<Number>("textureId") ?: -1).toLong()
+                    val rgba = call.argument<ByteArray>("rgba") ?: ByteArray(0)
+                    val w = call.argument<Number>("width")?.toInt() ?: 0
+                    val h = call.argument<Number>("height")?.toInt() ?: 0
+                    renderers[id]?.pushRgba(rgba, w, h)
+                    result.success(null)
+                }
+                "updateAssistSettings" -> {
+                    val id = (call.argument<Number>("textureId") ?: -1).toLong()
+                    @Suppress("UNCHECKED_CAST")
+                    val map = call.argument<Map<String, Any?>>("settings") ?: emptyMap<String, Any?>()
+                    renderers[id]?.updateSettings(map)
+                    result.success(null)
+                }
+                "uploadLut" -> {
+                    val lutId = call.argument<String>("lutId") ?: return result.error("bad", "lutId", null)
+                    val rgba = call.argument<ByteArray>("rgba") ?: ByteArray(0)
+                    val size = call.argument<Number>("size")?.toInt() ?: 0
+                    for (e in renderers.values) e.uploadLut(lutId, rgba, size)
+                    result.success(null)
+                }
+                "removeLut" -> {
+                    val lutId = call.argument<String>("lutId") ?: return result.error("bad", "lutId", null)
+                    for (e in renderers.values) e.removeLut(lutId)
+                    result.success(null)
+                }
+                "setLutActive" -> {
+                    val id = (call.argument<Number>("textureId") ?: -1).toLong()
+                    val lutId = call.argument<String>("lutId")
+                    renderers[id]?.setActiveLut(lutId)
+                    result.success(null)
+                }
+                else -> result.notImplemented()
             }
-            "pushJpegFrame" -> {
-                val id = (call.argument<Number>("textureId") ?: -1).toLong()
-                val jpeg = call.argument<ByteArray>("jpeg")
-                renderers[id]?.pushJpeg(jpeg ?: ByteArray(0))
-                result.success(null)
-            }
-            "pushRgbaFrame" -> {
-                val id = (call.argument<Number>("textureId") ?: -1).toLong()
-                val rgba = call.argument<ByteArray>("rgba") ?: ByteArray(0)
-                val w = call.argument<Number>("width")?.toInt() ?: 0
-                val h = call.argument<Number>("height")?.toInt() ?: 0
-                renderers[id]?.pushRgba(rgba, w, h)
-                result.success(null)
-            }
-            "updateAssistSettings" -> {
-                val id = (call.argument<Number>("textureId") ?: -1).toLong()
-                @Suppress("UNCHECKED_CAST")
-                val map = call.argument<Map<String, Any?>>("settings") ?: emptyMap<String, Any?>()
-                renderers[id]?.updateSettings(map)
-                result.success(null)
-            }
-            "uploadLut" -> {
-                val lutId = call.argument<String>("lutId") ?: return result.error("bad", "lutId", null)
-                val rgba = call.argument<ByteArray>("rgba") ?: ByteArray(0)
-                val size = call.argument<Number>("size")?.toInt() ?: 0
-                // Apply to every renderer (LUT textures are global).
-                for (e in renderers.values) e.uploadLut(lutId, rgba, size)
-                result.success(null)
-            }
-            "removeLut" -> {
-                val lutId = call.argument<String>("lutId") ?: return result.error("bad", "lutId", null)
-                for (e in renderers.values) e.removeLut(lutId)
-                result.success(null)
-            }
-            "setLutActive" -> {
-                val id = (call.argument<Number>("textureId") ?: -1).toLong()
-                val lutId = call.argument<String>("lutId")
-                renderers[id]?.setActiveLut(lutId)
-                result.success(null)
-            }
-            else -> result.notImplemented()
+        } catch (e: Exception) {
+            Log.e(TAG, "method ${call.method} failed", e)
+            result.error("render-error", e.message, null)
         }
     }
 
     private fun createTexture(result: MethodChannel.Result) {
         val b = binding ?: return result.error("no-binding", "FlutterPluginBinding null", null)
-        val entry = b.textureRegistry.createSurfaceTexture()
-        val surfaceTexture = entry.surfaceTexture()
-        val textureId = entry.id()
-        val renderer = RendererEntry(appContext, surfaceTexture, renderHandler!!) { msg ->
-            eventSink?.success(mapOf("event" to "renderError", "message" to msg))
+        if (renderHandler == null || renderThread == null) {
+            return result.error("no-render-thread", "Render thread not ready", null)
         }
-        renderers[textureId] = renderer
-        result.success(textureId.toInt())
+        try {
+            val entry = b.textureRegistry.createSurfaceTexture()
+            val surfaceTexture = entry.surfaceTexture()
+            val textureId = entry.id()
+            val renderer = RendererEntry(appContext, surfaceTexture, renderHandler!!) { msg ->
+                eventSink?.success(mapOf("event" to "renderError", "message" to msg))
+            }
+            renderers[textureId] = renderer
+            result.success(textureId.toInt())
+        } catch (e: Exception) {
+            Log.e(TAG, "createTexture failed", e)
+            result.error("create-texture-failed", e.message, null)
+        }
     }
 
     private class RendererEntry(
@@ -264,7 +280,13 @@ class RenderPlugin(private val appContext: Context) : FlutterPlugin, MethodChann
 
         fun init(surfaceTexture: SurfaceTexture) {
             display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
-            EGL14.eglInitialize(display, null, 0, null, 0)
+            if (display === EGL14.EGL_NO_DISPLAY) {
+                throw RuntimeException("eglGetDisplay failed: ${EGL14.eglGetError()}")
+            }
+            val version = IntArray(2)
+            if (!EGL14.eglInitialize(display, version, 0, version, 1)) {
+                throw RuntimeException("eglInitialize failed: ${EGL14.eglGetError()}")
+            }
             val configs = arrayOfNulls<EGLConfig>(1)
             val numConfig = IntArray(1)
             val attribs = intArrayOf(
@@ -275,13 +297,26 @@ class RenderPlugin(private val appContext: Context) : FlutterPlugin, MethodChann
                 EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
                 EGL14.EGL_NONE,
             )
-            EGL14.eglChooseConfig(display, attribs, 0, configs, 0, 1, numConfig, 0)
+            if (!EGL14.eglChooseConfig(display, attribs, 0, configs, 0, 1, numConfig, 0)) {
+                throw RuntimeException("eglChooseConfig failed: ${EGL14.eglGetError()}")
+            }
+            if (numConfig[0] == 0) {
+                throw RuntimeException("No EGL config found")
+            }
             config = configs[0]
             val ctxAttribs = intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE)
             context = EGL14.eglCreateContext(display, config, EGL14.EGL_NO_CONTEXT, ctxAttribs, 0)
+            if (context === EGL14.EGL_NO_CONTEXT) {
+                throw RuntimeException("eglCreateContext failed: ${EGL14.eglGetError()}")
+            }
             val surfaceAttribs = intArrayOf(EGL14.EGL_NONE)
             surface = EGL14.eglCreateWindowSurface(display, config, surfaceTexture, surfaceAttribs, 0)
-            EGL14.eglMakeCurrent(display, surface, surface, context)
+            if (surface === EGL14.EGL_NO_SURFACE) {
+                throw RuntimeException("eglCreateWindowSurface failed: ${EGL14.eglGetError()}")
+            }
+            if (!EGL14.eglMakeCurrent(display, surface, surface, context)) {
+                throw RuntimeException("eglMakeCurrent failed: ${EGL14.eglGetError()}")
+            }
         }
 
         fun swapBuffers() {

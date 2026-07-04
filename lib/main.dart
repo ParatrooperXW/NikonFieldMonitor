@@ -1,9 +1,4 @@
-// App entry point.
-//
-// Initializes services, enables wakelock (so the monitor stays awake during
-// long shoots), registers the native render bridge listeners, and routes to
-// either the connection page or the live view page depending on state.
-library;
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,26 +12,29 @@ import 'utils/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
   };
-  // Lock to portrait-up + landscape for tablets; we handle rotation in-screen.
-  try {
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-  } catch (_) {
-    // Ignore orientation errors on unsupported devices
-  }
-  // Keep screen on while the app is running (critical for a monitor).
-  try {
-    await WakelockPlus.enable();
-  } catch (_) {
-    // Ignore wakelock errors
-  }
-  runApp(const ProviderScope(child: NikonFieldMonitorApp()));
+
+  runZonedGuarded(
+    () async {
+      try {
+        await SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      } catch (_) {}
+      try {
+        await WakelockPlus.enable();
+      } catch (_) {}
+      runApp(const ProviderScope(child: NikonFieldMonitorApp()));
+    },
+    (Object error, StackTrace stack) {
+      debugPrint('Uncaught async error: $error\n$stack');
+    },
+  );
 }
 
 class NikonFieldMonitorApp extends ConsumerWidget {

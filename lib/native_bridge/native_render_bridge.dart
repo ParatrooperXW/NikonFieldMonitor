@@ -51,14 +51,28 @@ class RenderBridge {
 
   /// Allocate a Flutter texture on the native side. Returns its textureId.
   Future<int> createTexture() async {
-    final res = await _methodChannel.invokeMethod<int>('createTexture');
-    if (res == null) {
+    try {
+      final res = await _methodChannel.invokeMethod<int>('createTexture');
+      if (res == null) {
+        throw PlatformException(
+          code: 'RENDER_INIT',
+          message: 'createTexture returned null',
+        );
+      }
+      return res;
+    } on PlatformException {
+      rethrow;
+    } on MissingPluginException catch (e) {
       throw PlatformException(
         code: 'RENDER_INIT',
-        message: 'createTexture returned null',
+        message: 'Render plugin not available: $e',
+      );
+    } catch (e) {
+      throw PlatformException(
+        code: 'RENDER_INIT',
+        message: 'createTexture failed: $e',
       );
     }
-    return res;
   }
 
   Future<void> releaseTexture(int textureId) =>

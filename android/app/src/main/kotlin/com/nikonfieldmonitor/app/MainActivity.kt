@@ -1,21 +1,20 @@
 package com.nikonfieldmonitor.app
 
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import com.nikonfieldmonitor.render.RenderPlugin
 import com.nikonfieldmonitor.usb.UsbPtpPlugin
 
-/**
- * Main Flutter activity.
- *
- * Registers our two MethodChannel plugins:
- *  - RenderPlugin  ("nikon_field_monitor/render")     -> OpenGL ES LiveView texture + GPU pipeline
- *  - UsbPtpPlugin  ("nikon_field_monitor/usb_ptp")    -> Android USB Host PTP transport
- */
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        flutterEngine.plugins.add(UsbPtpPlugin(context))
-        flutterEngine.plugins.add(RenderPlugin(context))
+        try {
+            val ctx = this
+            flutterEngine.plugins.add(UsbPtpPlugin(ctx))
+            flutterEngine.plugins.add(RenderPlugin(ctx))
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to register plugins", e)
+        }
     }
 }
