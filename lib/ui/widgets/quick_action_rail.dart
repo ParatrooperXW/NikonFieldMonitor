@@ -5,11 +5,13 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/monitor_assist_settings.dart';
+import '../../state/providers.dart';
 import '../../utils/theme.dart';
 
-class QuickActionRail extends StatelessWidget {
+class QuickActionRail extends ConsumerWidget {
   const QuickActionRail({
     super.key,
     required this.onTogglePeaking,
@@ -32,32 +34,33 @@ class QuickActionRail extends StatelessWidget {
   final bool horizontal;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(stringsProvider);
     final children = <Widget>[
       _ActionBtn(
         icon: Icons.blur_on,
-        label: 'Peak',
+        label: t('quickPeak'),
         active: settings.peakingEnabled,
         activeColor: peakingColorValue(settings.peakingColor),
         onTap: onTogglePeaking,
       ),
       _ActionBtn(
         icon: Icons.waves,
-        label: 'Zebra',
+        label: t('quickZebra'),
         active: settings.zebraEnabled,
         activeColor: AppColors.cyan,
         onTap: onToggleZebra,
       ),
       _ActionBtn(
         icon: Icons.palette_outlined,
-        label: 'False',
+        label: t('quickFalse'),
         active: settings.falseColorEnabled,
         activeColor: AppColors.yellow,
         onTap: onToggleFalseColor,
       ),
       _ActionBtn(
         icon: Icons.tune_rounded,
-        label: 'LUT',
+        label: t('quickLut'),
         active: settings.lutActuallyApplied,
         activeColor: AppColors.accent,
         onTap: onToggleLut,
@@ -65,14 +68,14 @@ class QuickActionRail extends StatelessWidget {
       const Divider(height: 1, indent: 8, endIndent: 8),
       _ActionBtn(
         icon: Icons.camera,
-        label: 'Shoot',
+        label: t('quickShoot'),
         active: false,
         activeColor: AppColors.accent,
         onTap: onCapture,
       ),
       _ActionBtn(
         icon: Icons.fiber_manual_record,
-        label: 'Rec',
+        label: t('quickRec'),
         active: false,
         activeColor: AppColors.red,
         onTap: onRecordToggle,

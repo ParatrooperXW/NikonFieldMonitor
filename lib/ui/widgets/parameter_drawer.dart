@@ -29,6 +29,7 @@ class ParameterDrawer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final conn = ref.watch(cameraConnectionProvider);
+    final t = ref.watch(stringsProvider);
     final props = conn.properties;
 
     return Container(
@@ -40,7 +41,7 @@ class ParameterDrawer extends ConsumerWidget {
             children: [
               const Icon(Icons.tune, size: 16, color: AppColors.onSurfaceMuted),
               const SizedBox(width: 6),
-              Text('Parameters', style: Theme.of(context).textTheme.labelMedium),
+              Text(t('parameters'), style: Theme.of(context).textTheme.labelMedium),
               const Spacer(),
               IconButton(
                 visualDensity: VisualDensity.compact,
@@ -60,7 +61,7 @@ class ParameterDrawer extends ConsumerWidget {
                     onTap: () => _showIsoPicker(context, ref, props.iso),
                   ),
                   _ParamChip(
-                    label: 'SHUTTER',
+                    label: t('shutterSpeed'),
                     value: props.shutterSpeed.isEmpty ? '—' : props.shutterSpeed,
                     onTap: () => _showShutterPicker(context, ref),
                   ),
@@ -70,7 +71,7 @@ class ParameterDrawer extends ConsumerWidget {
                     onTap: () => _showAperturePicker(context, ref),
                   ),
                   _ParamChip(
-                    label: 'WB',
+                    label: t('whiteBalance'),
                     value: props.whiteBalance.isEmpty ? '—' : props.whiteBalance,
                     onTap: () => _showWbPicker(context, ref),
                   ),
@@ -80,7 +81,7 @@ class ParameterDrawer extends ConsumerWidget {
                     onTap: () => _showEvPicker(context, ref),
                   ),
                   _ParamChip(
-                    label: 'MODE',
+                    label: t('exposureMode'),
                     value: props.exposureMode.isEmpty ? '—' : props.exposureMode,
                     onTap: () {},
                   ),
@@ -108,10 +109,11 @@ class ParameterDrawer extends ConsumerWidget {
   }
 
   void _showShutterPicker(BuildContext context, WidgetRef ref) {
+    final t = ref.read(stringsProvider);
     const speeds = ['1/8000', '1/4000', '1/2000', '1/1000', '1/500', '1/250', '1/125', '1/60', '1/30', '1/15', '1/8', '1/4', '1/2', '1"', '2"', '4"'];
     _showPickerSheet<String>(
       context,
-      title: 'Shutter speed',
+      title: t('shutterSpeed'),
       values: speeds,
       current: '',
       label: (v) => v,
@@ -124,10 +126,11 @@ class ParameterDrawer extends ConsumerWidget {
   }
 
   void _showAperturePicker(BuildContext context, WidgetRef ref) {
+    final t = ref.read(stringsProvider);
     const aps = ['f/1.4', 'f/1.8', 'f/2.0', 'f/2.8', 'f/4.0', 'f/5.6', 'f/8.0', 'f/11', 'f/16', 'f/22'];
     _showPickerSheet<String>(
       context,
-      title: 'Aperture',
+      title: t('aperture'),
       values: aps,
       current: '',
       label: (v) => v,
@@ -138,10 +141,14 @@ class ParameterDrawer extends ConsumerWidget {
   }
 
   void _showWbPicker(BuildContext context, WidgetRef ref) {
-    const wbs = ['Auto', 'Daylight', 'Cloudy', 'Shade', 'Incandescent', 'Fluorescent', 'Flash', 'Kelvin'];
+    final t = ref.read(stringsProvider);
+    final wbs = [
+      t('wbAuto'), t('wbDaylight'), t('wbCloudy'), t('wbShade'),
+      t('wbIncandescent'), t('wbFluorescent'), t('wbFlash'), t('wbKelvin'),
+    ];
     _showPickerSheet<String>(
       context,
-      title: 'White balance',
+      title: t('whiteBalance'),
       values: wbs,
       current: '',
       label: (v) => v,
@@ -152,10 +159,11 @@ class ParameterDrawer extends ConsumerWidget {
   }
 
   void _showEvPicker(BuildContext context, WidgetRef ref) {
+    final t = ref.read(stringsProvider);
     const evs = ['-3.0', '-2.0', '-1.0', '-0.7', '-0.3', '0.0', '+0.3', '+0.7', '+1.0', '+2.0', '+3.0'];
     _showPickerSheet<String>(
       context,
-      title: 'Exposure compensation',
+      title: t('exposureCompensation'),
       values: evs,
       current: '0.0',
       label: (v) => v,

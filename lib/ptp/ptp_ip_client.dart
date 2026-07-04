@@ -87,8 +87,15 @@ class PtpIpClient {
   bool _isOpen = false;
 
   final _incoming = BytesBuilder();
+  final _evtIncoming = BytesBuilder();
   final _eventController = StreamController<PtpIpPacket>.broadcast();
   Stream<PtpIpPacket> get events => _eventController.stream;
+
+  // Buffered command-channel packets that arrived without a pending waiter.
+  // Without this, a Data packet followed immediately by a Res packet in the
+  // same TCP segment would cause the Res to be dropped → OpenSession timeout.
+  final _cmdPackets = <PtpIpPacket>[];
+  final _cmdCompleters = <Completer<PtpIpPacket>>[];
 
   bool get isOpen => _isOpen;
   int get sessionId => _sessionId;
@@ -96,6 +103,8 @@ class PtpIpClient {
   /// Connect + InitReq/InitAck + OpenSession.
   Future<void> connect(InternetAddress host, [int port = 15740]) async {
     _cmdSocket = await Socket.connect(host, port, timeout: const Duration(seconds: 5));
+    // IMPORTANT: register listener BEFORE sending InitReq, otherwise the
+    // InitAck can arrive before the listener is wired up and be lost.
     _cmdSocket!.listen(_onCmdData, onError: _onCmdError, onDone: _onCmdDone);
 
     // InitReq
@@ -105,18 +114,17 @@ class PtpIpClient {
     if (initAck.type != PtpIpPacketType.initAck) {
       throw PtpException('Expected InitAck, got type 0x${initAck.type.toRadixString(16)}');
     }
-    // InitAck payload: [connectionId:u32]  (camera assigns this)
-    // We don't strictly need it; OpenSession uses our own session id.
 
     // Open event channel (Nikon expects a second TCP connection for events).
     _evtSocket = await Socket.connect(host, port, timeout: const Duration(seconds: 5));
-    final evtReq = buildInitReq(guid, '${friendlyName}_evt');
-    _evtSocket!.add(PtpIpPacket(type: PtpIpPacketType.eventReq, payload: evtReq).encode());
+    // IMPORTANT: listen BEFORE add — otherwise EventAck is lost.
     _evtSub = _evtSocket!.listen(
       _onEvtData,
       onError: (Object e, StackTrace s) => _eventController.addError(e, s),
       onDone: () => _eventController.addError(SocketException('event channel closed'), StackTrace.current),
     );
+    final evtReq = buildInitReq(guid, '${friendlyName}_evt');
+    _evtSocket!.add(PtpIpPacket(type: PtpIpPacketType.eventReq, payload: evtReq).encode());
 
     // OpenSession: standard PTP op 0x1002, param0 = session id.
     _sessionId = Random().nextInt(0xFFFFFF) + 1;
@@ -214,13 +222,28 @@ class PtpIpClient {
 
   void _onCmdData(Uint8List chunk) {
     _incoming.add(chunk);
-    _drainIncoming(_cmdSocket, _eventController);
+    _drainIncoming();
   }
 
   void _onEvtData(Uint8List chunk) {
-    // Event channel framing is identical to command channel.
-    final b = BytesBuilder()..add(chunk);
-    _drainBufferInto(b, _eventController);
+    // Event channel framing is identical to command channel. Accumulate into
+    // a persistent buffer (NOT a per-call BytesBuilder) so multi-chunk packets
+    // are not lost.
+    _evtIncoming.add(chunk);
+    final bytes = _evtIncoming.toBytes();
+    var consumed = 0;
+    while (bytes.length - consumed >= 4) {
+      final len = ByteData.sublistView(bytes, consumed, consumed + 4).getUint32(0, Endian.little);
+      if (bytes.length - consumed < len) break;
+      final pktBytes = bytes.sublist(consumed, consumed + len);
+      consumed += len;
+      _eventController.add(PtpIpPacket.decode(pktBytes));
+    }
+    if (consumed > 0) {
+      final leftover = bytes.sublist(consumed);
+      _evtIncoming.clear();
+      _evtIncoming.add(leftover);
+    }
   }
 
   void _onCmdError(Object e, StackTrace s) {
@@ -233,26 +256,27 @@ class PtpIpClient {
     }
   }
 
-  final _cmdCompleters = <Completer<PtpIpPacket>>[];
-
   Future<PtpIpPacket> _waitForPacket(Duration timeout) {
+    // If we already buffered a packet (e.g. Data+Res arrived in one segment),
+    // return it immediately instead of queueing a new waiter.
+    if (_cmdPackets.isNotEmpty) {
+      return Future.value(_cmdPackets.removeAt(0));
+    }
     final c = Completer<PtpIpPacket>();
     _cmdCompleters.add(c);
-    final sub = events.listen((_) {});
     Timer(timeout, () {
       if (!c.isCompleted) {
         c.completeError(TimeoutException('PTP packet timeout', timeout));
+        _cmdCompleters.remove(c);
       }
     });
-    // The actual delivery is handled by _drainIncoming via _eventController? No:
-    // command-channel packets are NOT routed to events stream; we route them
-    // here instead.
-    return c.future..whenComplete(sub.cancel);
+    return c.future;
   }
 
-  void _drainIncoming(Socket? s, StreamController<PtpIpPacket> sink) {
-    // _incoming accumulates bytes from command socket; we extract full packets
-    // and complete the oldest waiter.
+  void _drainIncoming() {
+    // _incoming accumulates bytes from the command socket; we extract full
+    // packets and either complete the oldest waiter or buffer the packet for
+    // the next _waitForPacket call.
     final bytes = _incoming.toBytes();
     var consumed = 0;
     while (bytes.length - consumed >= 4) {
@@ -264,28 +288,16 @@ class PtpIpClient {
       if (_cmdCompleters.isNotEmpty) {
         final c = _cmdCompleters.removeAt(0);
         if (!c.isCompleted) c.complete(pkt);
+      } else {
+        // No waiter yet — buffer for the next _waitForPacket call.
+        _cmdPackets.add(pkt);
       }
     }
     if (consumed > 0) {
-      // rebuild _incoming with leftover
       final leftover = bytes.sublist(consumed);
       _incoming.clear();
       _incoming.add(leftover);
     }
-  }
-
-  void _drainBufferInto(BytesBuilder b, StreamController<PtpIpPacket> sink) {
-    final bytes = b.toBytes();
-    var consumed = 0;
-    while (bytes.length - consumed >= 4) {
-      final len = ByteData.sublistView(bytes, consumed, consumed + 4).getUint32(0, Endian.little);
-      if (bytes.length - consumed < len) break;
-      final pktBytes = bytes.sublist(consumed, consumed + len);
-      consumed += len;
-      sink.add(PtpIpPacket.decode(pktBytes));
-    }
-    b.clear();
-    b.add(bytes.sublist(consumed));
   }
 }
 

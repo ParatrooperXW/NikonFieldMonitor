@@ -177,7 +177,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
         ),
         const SizedBox(height: 12),
         if (_discovered.isNotEmpty) ...[
-          Text('Found ${_discovered.length} camera(s)', style: Theme.of(context).textTheme.titleSmall),
+          Text(t('foundCameras', params: {'count': '${_discovered.length}'}), style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),
           for (final d in _discovered)
             Card(
@@ -238,9 +238,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Text(
-              'Tip: enable “Wireless mobile utility” / “SnapBridge” off on the camera, '
-              'and use the camera’s “Network → Connect to computer” Wi-Fi mode. '
-              'Default PTP-IP port is 15740.',
+              t('wifiTip'),
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
