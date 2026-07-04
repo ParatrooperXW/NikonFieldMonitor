@@ -1,0 +1,58 @@
+# Podfile for NikonFieldMonitor iOS.
+#
+# Minimum iOS 14.0 — required by:
+#   - CVMetalTextureCache (used by RenderPlugin for zero-copy Metal views of
+#     CVPixelBuffers handed to Flutter's Texture widget)
+#   - IOSurface-backed CVPixelBufferPool with kCVPixelBufferMetalCompatibilityKey
+#   - The modern Metal API surface used by LiveViewRenderer's 5-pass pipeline
+#   - Local Network privacy prompt (NSLocalNetworkUsageDescription in Info.plist)
+platform :ios, '14.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter
+# build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+# Resolve FLUTTER_ROOT from Runner/../Flutter/Generated.xcconfig (produced by
+# `flutter pub get`). Standard Flutter iOS Podfile boilerplate.
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure \"flutter pub get\" is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+  # Installs every pod declared by the plugin packages in pubspec.yaml
+  # (permission_handler, network_info_plus, wakelock_plus, path_provider,
+  # file_picker, ...). Standard Flutter entry point — do not remove.
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+    # Force every CocoaPod to deploy to iOS 14+ so the post_install hook from
+    # older plugin Podspecs (which may still default to 11 or 12) cannot
+    # downgrade the app's MinimumOSVersion.
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+    end
+  end
+end

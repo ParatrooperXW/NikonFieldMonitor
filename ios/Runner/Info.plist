@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>NikonFieldMonitor</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>NikonFieldMonitor</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Minimum iOS version. iOS 14.0 is required for:
+	     - CVMetalTextureCache (used by RenderPlugin for zero-copy Metal views
+	       of CVPixelBuffers)
+	     - IOSurface-backed CVPixelBufferPool with kCVPixelBufferMetalCompatibilityKey
+	     - The modern Metal API surface used by LiveViewRenderer's 5-pass pipeline
+	     - Local Network privacy prompt (NSLocalNetworkUsageDescription) -->
+	<key>MinimumOSVersion</key>
+	<string>14.0</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<!-- Field monitor: support all orientations on iPhone (Landscape is the
+	     primary use case for a camera monitor; Portrait is for settings). -->
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+	<!-- Allow ProMotion (120 Hz) on iPhone 13 Pro / 14 Pro / 15 Pro for
+	     smoother LiveView. Standard Flutter iOS key. -->
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<!-- App Store export-compliance shortcut: this app does not use any
+	     exempt encryption beyond Apple's standard library. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!-- Local network access: required on iOS 14+ for the Dart PTP-IP
+	     discovery helper (lib/ptp/ptp_ip_client.dart:discoverPtpIpCameras),
+	     which sends a UDP broadcast on port 15740 to find Nikon cameras on
+	     the local Wi-Fi subnet. Without this key the first broadcast triggers
+	     a system permission prompt that the user must accept. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>NikonFieldMonitor discovers Nikon cameras on your local Wi-Fi network using the PTP-IP protocol. Grant access to scan for cameras on this network.</string>
+	<!-- Bonjour service types this app might browse for. The Dart discovery
+	     helper currently uses raw UDP broadcast (not NSNetService), but
+	     declaring these here future-proofs against a Bonjour-based scanner
+	     and silences iOS 14+ local-network prompt for any Bonjour browse. -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_ptp-ip._tcp</string>
+		<string>_nikon-wma._tcp</string>
+		<string>_nikon-wuc._tcp</string>
+	</array>
+</dict>
+</plist>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  USB device filter: launch the app when a Nikon camera is connected.
+  Nikon vendor id is 0x04B0. List common PTP/MTP PIDs; expand as needed.
+  Reference: https://developer.android.com/guide/topics/connectivity/usb/device
+-->
+<resources>
+    <usb-device vendor-id="1200" product-id="-1"/>
+    <!-- 1200 = 0x04B0 = Nikon Corp -->
+</resources>
