@@ -10,7 +10,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:network_info_plus/network_info_plus.dart';
 
 import '../../models/camera_state.dart';
 import '../../native_bridge/usb_ptp_bridge.dart';
@@ -57,16 +56,13 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
   Future<void> _scan() async {
     setState(() => _scanning = true);
     try {
-      // Show the local subnet so the user knows where we're scanning.
-      final info = NetworkInfo();
-      final ip = await info.getWifiIP();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Scanning from $ip …'), duration: const Duration(seconds: 1)),
-        );
-      }
       final found = await discoverPtpIpCameras();
       setState(() => _discovered = found);
+      if (mounted && found.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No cameras found on local network')),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

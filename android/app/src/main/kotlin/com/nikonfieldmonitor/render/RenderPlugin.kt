@@ -139,11 +139,12 @@ class RenderPlugin(private val appContext: Context) : FlutterPlugin, MethodChann
         val b = binding ?: return result.error("no-binding", "FlutterPluginBinding null", null)
         val entry = b.textureRegistry.createSurfaceTexture()
         val surfaceTexture = entry.surfaceTexture()
+        val textureId = entry.id()
         val renderer = RendererEntry(appContext, surfaceTexture, renderHandler!!) { msg ->
             eventSink?.success(mapOf("event" to "renderError", "message" to msg))
         }
-        renderers[entry.id()] = renderer
-        result.success(entry.id())
+        renderers[textureId] = renderer
+        result.success(textureId.toInt())
     }
 
     private class RendererEntry(

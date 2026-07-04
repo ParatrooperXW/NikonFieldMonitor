@@ -59,6 +59,8 @@ class UsbPtpPlugin(private val ctx: Context) : FlutterPlugin, MethodChannel.Meth
     private var nextSessionHandle = 1
     private var nextTransactionId = 1
 
+    private var receiverRegistered = false
+
     private val usbReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -83,8 +85,37 @@ class UsbPtpPlugin(private val ctx: Context) : FlutterPlugin, MethodChannel.Meth
                         "deviceId" to it.deviceId.toString(),
                     )) }
                 }
+                USB_PERMISSION_ACTION -> {
+                    val granted = intent?.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false) ?: false
+                    eventSink?.success(mapOf(
+                        "event" to "permissionResult",
+                        "granted" to granted,
+                        "deviceId" to device?.deviceId?.toString(),
+                    ))
+                }
             }
         }
+    }
+
+    private fun registerReceiver() {
+        if (receiverRegistered) return
+        val filter = IntentFilter().apply {
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+            addAction(USB_PERMISSION_ACTION)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ctx.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            ctx.registerReceiver(usbReceiver, filter)
+        }
+        receiverRegistered = true
+    }
+
+    private fun unregisterReceiver() {
+        if (!receiverRegistered) return
+        try { ctx.unregisterReceiver(usbReceiver) } catch (_: Exception) {}
+        receiverRegistered = false
     }
 
     override fun onAttachedToEngine(b: FlutterPlugin.FlutterPluginBinding) {
@@ -96,18 +127,10 @@ class UsbPtpPlugin(private val ctx: Context) : FlutterPlugin, MethodChannel.Meth
             it.setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, sink: EventChannel.EventSink?) {
                     eventSink = sink
-                    val filter = IntentFilter().apply {
-                        addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
-                        addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        ctx.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-                    } else {
-                        ctx.registerReceiver(usbReceiver, filter)
-                    }
+                    registerReceiver()
                 }
                 override fun onCancel(arguments: Any?) {
-                    try { ctx.unregisterReceiver(usbReceiver) } catch (_: Exception) {}
+                    unregisterReceiver()
                     eventSink = null
                 }
             })
@@ -183,19 +206,13 @@ class UsbPtpPlugin(private val ctx: Context) : FlutterPlugin, MethodChannel.Meth
         val device = usbManager.deviceList.values.firstOrNull { it.deviceId.toString() == deviceId }
             ?: return false
         if (usbManager.hasPermission(device)) return true
+        registerReceiver()
         val intentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         else PendingIntent.FLAG_UPDATE_CURRENT
         val pi = PendingIntent.getBroadcast(ctx, 0,
             Intent(USB_PERMISSION_ACTION).setPackage(ctx.packageName), intentFlags)
-        val filter = IntentFilter(USB_PERMISSION_ACTION)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ctx.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            ctx.registerReceiver(usbReceiver, filter)
-        }
         usbManager.requestPermission(device, pi)
-        // Best-effort: poll permission for up to ~3s.
         for (i in 0 until 30) {
             if (usbManager.hasPermission(device)) return true
             Thread.sleep(100)

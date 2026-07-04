@@ -17,14 +17,25 @@ import 'utils/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+  };
   // Lock to portrait-up + landscape for tablets; we handle rotation in-screen.
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
+  try {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  } catch (_) {
+    // Ignore orientation errors on unsupported devices
+  }
   // Keep screen on while the app is running (critical for a monitor).
-  WakelockPlus.enable();
+  try {
+    await WakelockPlus.enable();
+  } catch (_) {
+    // Ignore wakelock errors
+  }
   runApp(const ProviderScope(child: NikonFieldMonitorApp()));
 }
 
