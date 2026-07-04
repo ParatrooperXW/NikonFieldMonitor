@@ -24,8 +24,8 @@ android {
         // minSdk 21 per spec: USB OTG + PTP/IP baseline.
         minSdk = flutter.minSdkVersion
         targetSdk = 34
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        versionCode = flutter.versionCode().toInt()
+        versionName = flutter.versionName()
     }
 
     buildTypes {

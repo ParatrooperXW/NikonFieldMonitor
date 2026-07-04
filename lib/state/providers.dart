@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/app_strings.dart';
 import '../models/camera_state.dart';
 import '../models/lut_model.dart';
 import '../models/monitor_assist_settings.dart';
@@ -197,3 +198,33 @@ class SavedConnectionsNotifier extends StateNotifier<List<SavedConnection>> {
     await _prefs.saveConnections(state);
   }
 }
+
+// ----- Locale -------------------------------------------------------------
+
+class LocaleNotifier extends StateNotifier<AppLocale> {
+  LocaleNotifier(this._prefs) : super(AppLocale.en) {
+    _load();
+  }
+  final PreferencesService _prefs;
+
+  Future<void> _load() async {
+    state = await _prefs.loadLocale();
+  }
+
+  Future<void> set(AppLocale l) async {
+    state = l;
+    await _prefs.saveLocale(l);
+  }
+}
+
+final localeProvider =
+    StateNotifierProvider<LocaleNotifier, AppLocale>((ref) {
+  final prefs = ref.watch(preferencesServiceProvider);
+  return LocaleNotifier(prefs);
+});
+
+/// Convenience: returns an [AppStrings] bound to the current locale.
+final stringsProvider = Provider<AppStrings>((ref) {
+  final l = ref.watch(localeProvider);
+  return AppStrings.of(l);
+});

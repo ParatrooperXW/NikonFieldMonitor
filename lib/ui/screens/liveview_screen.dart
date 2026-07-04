@@ -25,6 +25,7 @@ import '../widgets/assist_menu_sheet.dart';
 import '../widgets/hud_overlay.dart';
 import '../widgets/parameter_drawer.dart';
 import '../widgets/quick_action_rail.dart';
+import 'settings_screen.dart';
 
 class LiveViewScreen extends ConsumerStatefulWidget {
   const LiveViewScreen({super.key});
@@ -53,6 +54,7 @@ class _LiveViewScreenState extends ConsumerState<LiveViewScreen> {
   }
 
   Future<void> _startLiveView() async {
+    final t = ref.read(stringsProvider);
     final svc = ref.read(liveViewServiceProvider);
     final connNotifier = ref.read(cameraConnectionProvider.notifier);
     try {
@@ -65,9 +67,10 @@ class _LiveViewScreenState extends ConsumerState<LiveViewScreen> {
       }
     } catch (e) {
       if (mounted) {
-        connNotifier.setError('LiveView failed: $e');
+        final msg = t('liveViewFailed', params: {'error': '$e'});
+        connNotifier.setError(msg);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('LiveView failed: $e')),
+          SnackBar(content: Text(msg)),
         );
       }
     }
@@ -280,6 +283,7 @@ class _LiveViewScreenState extends ConsumerState<LiveViewScreen> {
   }
 
   Widget _topBar(CameraConnectionState conn) {
+    final t = ref.watch(stringsProvider);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       color: Colors.black54,
@@ -300,7 +304,7 @@ class _LiveViewScreenState extends ConsumerState<LiveViewScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.movie_creation_outlined, color: AppColors.accent),
-            tooltip: 'Monitor assist',
+            tooltip: t('monitorAssist'),
             onPressed: () => showModalBottomSheet<void>(
               context: context,
               isScrollControlled: true,
@@ -308,8 +312,15 @@ class _LiveViewScreenState extends ConsumerState<LiveViewScreen> {
             ).then((_) => _onAssistSettingsChanged()),
           ),
           IconButton(
+            icon: const Icon(Icons.settings, color: AppColors.accent),
+            tooltip: t('settings'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+          IconButton(
             icon: const Icon(Icons.power_settings_new, color: AppColors.red),
-            tooltip: 'Disconnect',
+            tooltip: t('disconnect'),
             onPressed: _disconnect,
           ),
         ],
@@ -327,6 +338,7 @@ class _LiveViewScreenState extends ConsumerState<LiveViewScreen> {
   }
 
   void _handleTouchFocus(TapUpDetails d, BuildContext context) {
+    final t = ref.read(stringsProvider);
     final renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
     final size = renderBox.size;
@@ -339,7 +351,10 @@ class _LiveViewScreenState extends ConsumerState<LiveViewScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('AF @ (${(nx * 100).round()}%, ${(ny * 100).round()}%)'),
+            content: Text(t('afAt', params: {
+              'x': '${(nx * 100).round()}',
+              'y': '${(ny * 100).round()}',
+            })),
             duration: const Duration(milliseconds: 600),
           ),
         );
@@ -355,13 +370,14 @@ class _LiveViewScreenState extends ConsumerState<LiveViewScreen> {
   }
 
   Future<void> _capture() async {
+    final t = ref.read(stringsProvider);
     final conn = ref.read(connectionServiceProvider);
     try {
       await conn.capture();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Capture failed: $e')),
+          SnackBar(content: Text(t('captureFailed', params: {'error': '$e'}))),
         );
       }
     }
@@ -369,6 +385,7 @@ class _LiveViewScreenState extends ConsumerState<LiveViewScreen> {
 
   bool _recording = false;
   Future<void> _toggleRecord() async {
+    final t = ref.read(stringsProvider);
     final conn = ref.read(connectionServiceProvider);
     try {
       if (_recording) {
@@ -380,7 +397,7 @@ class _LiveViewScreenState extends ConsumerState<LiveViewScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Record toggle failed: $e')),
+          SnackBar(content: Text(t('recordToggleFailed', params: {'error': '$e'}))),
         );
       }
     }

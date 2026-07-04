@@ -6,12 +6,14 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../l10n/app_strings.dart';
 import '../models/camera_state.dart';
 import '../models/monitor_assist_settings.dart';
 
 class PreferencesService {
   static const _kAssist = 'monitor_assist_settings';
   static const _kConnections = 'saved_connections';
+  static const _kLocale = 'app_locale';
 
   Future<MonitorAssistSettings> loadAssistSettings() async {
     final sp = await SharedPreferences.getInstance();
@@ -42,5 +44,20 @@ class PreferencesService {
     final sp = await SharedPreferences.getInstance();
     final list = connections.map((c) => c.toJson()).toList();
     await sp.setString(_kConnections, jsonEncode(list));
+  }
+
+  Future<AppLocale> loadLocale() async {
+    final sp = await SharedPreferences.getInstance();
+    final raw = sp.getString(_kLocale);
+    return switch (raw) {
+      'zhCN' => AppLocale.zhCN,
+      'zhTW' => AppLocale.zhTW,
+      _ => AppLocale.en,
+    };
+  }
+
+  Future<void> saveLocale(AppLocale l) async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString(_kLocale, l.name);
   }
 }

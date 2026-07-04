@@ -27,6 +27,7 @@ class AssistMenuSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = ref.watch(stringsProvider);
     final s = ref.watch(assistSettingsProvider);
     final notifier = ref.read(assistSettingsProvider.notifier);
     final luts = ref.watch(lutsProvider);
@@ -46,7 +47,7 @@ class AssistMenuSheet extends ConsumerWidget {
                 children: [
                   const Icon(Icons.movie_creation_outlined, color: AppColors.accent),
                   const SizedBox(width: 8),
-                  Text('Monitor assist',
+                  Text(t('monitorAssist'),
                       style: Theme.of(context).textTheme.titleLarge),
                 ],
               ),
@@ -54,7 +55,7 @@ class AssistMenuSheet extends ConsumerWidget {
 
               // Peaking
               _SwitchRow(
-                title: 'Focus peaking',
+                title: t('focusPeaking'),
                 value: s.peakingEnabled,
                 onChanged: (v) => notifier.update(s.copyWith(peakingEnabled: v)),
                 trailing: Row(
@@ -80,14 +81,14 @@ class AssistMenuSheet extends ConsumerWidget {
 
               // Zebra
               _SwitchRow(
-                title: 'Zebras (IRE)',
+                title: t('zebrasIre'),
                 value: s.zebraEnabled,
                 onChanged: (v) => notifier.update(s.copyWith(zebraEnabled: v)),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _IreSpinner(
-                      label: 'lower',
+                      label: t('lower'),
                       value: s.zebraLower,
                       onChanged: (v) => notifier.update(s.copyWith(zebraLower: v)),
                     ),
@@ -96,7 +97,7 @@ class AssistMenuSheet extends ConsumerWidget {
                       child: Text('–'),
                     ),
                     _IreSpinner(
-                      label: 'upper',
+                      label: t('upper'),
                       value: s.zebraUpper,
                       onChanged: (v) => notifier.update(s.copyWith(zebraUpper: v)),
                     ),
@@ -106,8 +107,8 @@ class AssistMenuSheet extends ConsumerWidget {
 
               // False color (mutex with LUT)
               _SwitchRow(
-                title: 'False color',
-                subtitle: s.falseColorEnabled ? '(LUT auto-disabled)' : null,
+                title: t('falseColor'),
+                subtitle: s.falseColorEnabled ? t('falseColorLutDisabled') : null,
                 value: s.falseColorEnabled,
                 onChanged: (v) => notifier.update(s.copyWith(
                   falseColorEnabled: v,
@@ -117,8 +118,8 @@ class AssistMenuSheet extends ConsumerWidget {
 
               // LUT
               _SwitchRow(
-                title: 'Enable LUT',
-                subtitle: s.falseColorEnabled ? '(disabled by false color)' : null,
+                title: t('enableLut'),
+                subtitle: s.falseColorEnabled ? t('lutDisabledByFalseColor') : null,
                 value: s.lutEnabled,
                 onChanged: s.falseColorEnabled
                     ? null
@@ -132,7 +133,7 @@ class AssistMenuSheet extends ConsumerWidget {
                   ),
                   loading: () => const SizedBox(
                       width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                  error: (e, _) => Text('LUT load failed: $e',
+                  error: (e, _) => Text(t('lutLoadFailed', params: {'error': '$e'}),
                       style: const TextStyle(color: AppColors.red, fontSize: 12)),
                 ),
               ),
@@ -141,7 +142,7 @@ class AssistMenuSheet extends ConsumerWidget {
                 child: TextButton.icon(
                   onPressed: () => _importLut(context, ref),
                   icon: const Icon(Icons.file_upload_outlined, size: 18),
-                  label: const Text('Import .cube LUT'),
+                  label: Text(t('importCubeLut')),
                 ),
               ),
 
@@ -149,7 +150,7 @@ class AssistMenuSheet extends ConsumerWidget {
 
               // Histogram
               _SwitchRow(
-                title: 'Histogram',
+                title: t('histogram'),
                 value: s.histogramMode != HistogramMode.off,
                 onChanged: (v) => notifier.update(s.copyWith(
                   histogramMode: v ? HistogramMode.luma : HistogramMode.off,
@@ -159,14 +160,14 @@ class AssistMenuSheet extends ConsumerWidget {
                       ? HistogramMode.luma
                       : s.histogramMode,
                   items: const [HistogramMode.luma, HistogramMode.rgbParade],
-                  label: (m) => m == HistogramMode.luma ? 'Luma' : 'RGB Parade',
+                  label: (m) => m == HistogramMode.luma ? t('luma') : t('rgbParade'),
                   onChanged: (m) => notifier.update(s.copyWith(histogramMode: m)),
                 ),
               ),
 
               // Waveform
               _SwitchRow(
-                title: 'Waveform monitor',
+                title: t('waveformMonitor'),
                 value: s.waveformPlacement != WaveformPlacement.off,
                 onChanged: (v) => notifier.update(s.copyWith(
                   waveformPlacement: v
@@ -184,7 +185,7 @@ class AssistMenuSheet extends ConsumerWidget {
                         WaveformPlacement.bottom,
                         WaveformPlacement.side,
                       ],
-                      label: (p) => p == WaveformPlacement.bottom ? 'Bottom' : 'Side',
+                      label: (p) => p == WaveformPlacement.bottom ? t('bottom') : t('side'),
                       onChanged: (p) =>
                           notifier.update(s.copyWith(waveformPlacement: p)),
                     ),
@@ -205,7 +206,7 @@ class AssistMenuSheet extends ConsumerWidget {
 
               // Safe frame
               _SwitchRow(
-                title: 'Safe frame',
+                title: t('safeFrame'),
                 value: s.safeFrame != SafeFrame.none,
                 onChanged: (v) => notifier.update(s.copyWith(
                   safeFrame: v ? SafeFrame.ratio16x9 : SafeFrame.none,
@@ -224,8 +225,8 @@ class AssistMenuSheet extends ConsumerWidget {
                     SafeFrame.ratio16x9 => '16:9',
                     SafeFrame.ratio2_39x1 => '2.39:1',
                     SafeFrame.ratio4x3 => '4:3',
-                    SafeFrame.centerCross => 'Center cross',
-                    SafeFrame.none => 'Off',
+                    SafeFrame.centerCross => t('centerCross'),
+                    SafeFrame.none => t('off'),
                   },
                   onChanged: (sf) => notifier.update(s.copyWith(safeFrame: sf)),
                 ),
@@ -234,7 +235,7 @@ class AssistMenuSheet extends ConsumerWidget {
               const Divider(height: 16),
 
               SwitchListTile(
-                title: const Text('Show HUD (FPS / latency)'),
+                title: Text(t('showHud')),
                 value: s.hudVisible,
                 onChanged: (v) => notifier.update(s.copyWith(hudVisible: v)),
               ),
@@ -246,6 +247,7 @@ class AssistMenuSheet extends ConsumerWidget {
   }
 
   Future<void> _importLut(BuildContext context, WidgetRef ref) async {
+    final t = ref.read(stringsProvider);
     final svc = ref.read(lutServiceProvider);
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -259,13 +261,13 @@ class AssistMenuSheet extends ConsumerWidget {
       ref.invalidate(lutsProvider);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Imported LUT: ${lut.name}')),
+          SnackBar(content: Text(t('importedLut', params: {'name': lut.name}))),
         );
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e')),
+          SnackBar(content: Text(t('importFailed', params: {'error': '$e'}))),
         );
       }
     }

@@ -16,6 +16,7 @@ import '../../native_bridge/usb_ptp_bridge.dart';
 import '../../ptp/ptp_ip_client.dart';
 import '../../state/providers.dart';
 import '../../utils/theme.dart';
+import '../screens/settings_screen.dart';
 
 class ConnectionScreen extends ConsumerStatefulWidget {
   const ConnectionScreen({super.key});
@@ -54,19 +55,20 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
   }
 
   Future<void> _scan() async {
+    final t = ref.read(stringsProvider);
     setState(() => _scanning = true);
     try {
       final found = await discoverPtpIpCameras();
       setState(() => _discovered = found);
       if (mounted && found.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No cameras found on local network')),
+          SnackBar(content: Text(t('noCamerasFound'))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Discovery failed: $e')),
+          SnackBar(content: Text(t('discoveryFailed', params: {'error': '$e'}))),
         );
       }
     } finally {
@@ -86,6 +88,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
   }
 
   Future<void> _connectWifi(String host, int port) async {
+    final t = ref.read(stringsProvider);
     final notifier = ref.read(cameraConnectionProvider.notifier);
     await notifier.connectWifi(host, port);
     final conn = ref.read(cameraConnectionProvider);
@@ -100,12 +103,13 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
       ));
     } else if (conn.error != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Connection failed: ${conn.error}')),
+        SnackBar(content: Text(t('connectionFailed', params: {'error': conn.error!}))),
       );
     }
   }
 
   Future<void> _connectUsb(UsbPtpDevice d) async {
+    final t = ref.read(stringsProvider);
     final notifier = ref.read(cameraConnectionProvider.notifier);
     await notifier.connectUsb(d.deviceId);
     final conn = ref.read(cameraConnectionProvider);
@@ -119,22 +123,32 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
       ));
     } else if (conn.error != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('USB connect failed: ${conn.error}')),
+        SnackBar(content: Text(t('usbConnectFailed', params: {'error': conn.error!}))),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = ref.watch(stringsProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('NikonFieldMonitor'),
+        title: Text(t('appName')),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings, color: AppColors.accent),
+            tooltip: t('settings'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+        ],
         bottom: TabBar(
           controller: _tab,
-          tabs: const [
-            Tab(icon: Icon(Icons.wifi), text: 'Wi-Fi'),
-            Tab(icon: Icon(Icons.usb), text: 'USB'),
-            Tab(icon: Icon(Icons.history), text: 'History'),
+          tabs: [
+            Tab(icon: const Icon(Icons.wifi), text: t('wifi')),
+            Tab(icon: const Icon(Icons.usb), text: t('usb')),
+            Tab(icon: const Icon(Icons.history), text: t('history')),
           ],
         ),
       ),
@@ -150,6 +164,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
   }
 
   Widget _wifiTab() {
+    final t = ref.watch(stringsProvider);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -157,7 +172,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
           icon: _scanning
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.radar),
-          label: Text(_scanning ? 'Scanning…' : 'Auto-discover on local network'),
+          label: Text(_scanning ? t('scanning') : t('autoDiscover')),
           onPressed: _scanning ? null : _scan,
         ),
         const SizedBox(height: 12),
@@ -176,13 +191,13 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
             ),
           const Divider(height: 32),
         ],
-        Text('Manual connection', style: Theme.of(context).textTheme.titleSmall),
+        Text(t('manualConnection'), style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 8),
         TextField(
           controller: _ipController,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Camera IP address',
+          decoration: InputDecoration(
+            labelText: t('cameraIp'),
             hintText: '192.168.0.10',
             border: OutlineInputBorder(),
             prefixIcon: Icon(Icons.lan),
@@ -196,9 +211,9 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
               child: TextField(
                 controller: _portController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Port',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: t('port'),
+                  border: const OutlineInputBorder(),
                 ),
               ),
             ),
@@ -206,7 +221,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
             Expanded(
               child: FilledButton.icon(
                 icon: const Icon(Icons.link),
-                label: const Text('Connect'),
+                label: Text(t('connect')),
                 onPressed: () {
                   final host = _ipController.text.trim();
                   final port = int.tryParse(_portController.text.trim()) ?? 15740;
@@ -235,6 +250,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
   }
 
   Widget _usbTab() {
+    final t = ref.watch(stringsProvider);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -246,14 +262,14 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'USB OTG (Android only)',
+                  t('usbOtgAndroidOnly'),
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
               TextButton.icon(
                 onPressed: _refreshUsb,
                 icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Refresh'),
+                label: Text(t('refresh')),
               ),
             ],
           ),
@@ -264,10 +280,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
                     child: Padding(
                       padding: const EdgeInsets.all(24),
                       child: Text(
-                        'No USB devices detected.\n'
-                        'Connect a Nikon camera via OTG adapter and tap Refresh.\n\n'
-                        'iOS note: USB-C cameras require MFi + External Accessory '
-                        'framework — left as TODO.',
+                        t('noUsbDevices'),
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
@@ -297,10 +310,11 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
   }
 
   Widget _historyTab() {
+    final t = ref.watch(stringsProvider);
     final conns = ref.watch(savedConnectionsProvider);
     if (conns.isEmpty) {
       return Center(
-        child: Text('No saved connections yet.', style: Theme.of(context).textTheme.bodySmall),
+        child: Text(t('noSavedConnections'), style: Theme.of(context).textTheme.bodySmall),
       );
     }
     return ListView(
@@ -326,7 +340,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen>
                 title: Text(c.label),
                 subtitle: Text(
                   c.transport == CameraTransport.usb
-                      ? 'USB device'
+                      ? t('usbDevice')
                       : '${c.host}:${c.port}',
                 ),
                 trailing: c.lastUsed == null
