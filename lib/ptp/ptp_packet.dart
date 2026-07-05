@@ -1,63 +1,60 @@
-// PTP/IP packet encoding & decoding.
+// PTP/IP packet encoding & decoding (Nikon variant).
 //
-// PTP-IP runs over TCP. The protocol layers packets as:
-//   [4-byte length (uint32 LE, includes itself)]
+// Nikon cameras use an older / variant PTP/IP protocol that differs from
+// the PIMA 15740 standard in packet type numbering and payload layouts.
+// This file implements the Nikon variant as reverse-engineered by gphoto2.
+//
+// Packet structure:
+//   [4-byte length (uint32 LE, includes the 8-byte header)]
 //   [4-byte type   (uint32 LE)]
 //   [payload bytes...]
 //
-// Packet types per PIMA 15740 (PTP-IP), verified against gphoto2 ptpip.c:
-//   0x00000001 InitReq
-//   0x00000002 InitAck
-//   0x00000003 InitFail
-//   0x00000006 CmdReq    (was incorrectly named "Req")
-//   0x0000000A CmdAck    (was missing — transport ack, not PTP response)
-//   0x00000009 EventReq
-//   0x00000007 EventAck
-//   0x00000008 EventFail
-//   0x0000000C Event
-//   0x0000000B StartData
-//   0x0000000D Data
-//   0x0000000E Cancel
-//   0x0000000F EndData   (carries the PTP Response at end of data phase)
-//
-// For a PTP operation with NO data phase:
-//   Host → Camera: CmdReq  (contains full PTP command block)
-//   Camera → Host: EndData (contains PTP Response as payload, no data)
-//
-// For a PTP operation WITH data IN phase (camera → host):
-//   Host → Camera: CmdReq
-//   Camera → Host: StartData  (includes transaction id + total length)
-//   Camera → Host: Data  (possibly multiple chunks)
-//   Camera → Host: EndData (contains PTP Response + final data chunk)
+// Packet type values (Nikon variant, verified against gphoto ptpip docs):
+//   0x00000001 Init_Command_Request   (host → camera)
+//   0x00000002 Init_Command_Ack       (camera → host)
+//   0x00000003 Init_Event_Request     (host → camera)
+//   0x00000004 Init_Event_Ack         (camera → host)
+//   0x00000005 Init_Fail              (either direction)
+//   0x00000006 Cmd_Request            (host → camera)
+//   0x00000007 Cmd_Response           (camera → host)
+//   0x00000008 Event                  (camera → host)
+//   0x00000009 Start_Data_Packet      (either direction)
+//   0x0000000A Data_Packet            (either direction)
+//   0x0000000B Cancel_Transaction     (host → camera)
+//   0x0000000C End_Data_Packet        (either direction)
 //
 // References:
+//   - gphoto2 PTP/IP docs: https://gphoto.github.io/doc/ptpip/
 //   - gphoto2 camlibs/ptp2/ptpip.c
-//   - libmtp / src/ptpip.c
-//   - PIMA 15740:2000 (PTP-IP transport spec)
+//   - Nikon CoolPix P1/P2/P3/P4/S6 reverse engineering
 library;
 
 import 'dart:typed_data';
 
 import 'nikon_opcodes.dart';
 
-/// PTP-IP packet type identifiers (correct values per PIMA 15740).
+/// PTP-IP packet type identifiers (Nikon variant).
 abstract final class PtpIpPacketType {
-  static const int initReq = 0x00000001;
-  static const int initAck = 0x00000002;
-  static const int initFail = 0x00000003;
+  static const int initCommandReq = 0x00000001;
+  static const int initCommandAck = 0x00000002;
+  static const int initEventReq = 0x00000003;
+  static const int initEventAck = 0x00000004;
+  static const int initFail = 0x00000005;
   static const int cmdReq = 0x00000006;
-  static const int cmdAck = 0x0000000A;
-  static const int eventReq = 0x00000009;
-  static const int eventAck = 0x00000007;
-  static const int eventFail = 0x00000008;
-  static const int event = 0x0000000C;
-  static const int startData = 0x0000000B;
-  static const int data = 0x0000000D;
-  static const int cancel = 0x0000000E;
-  static const int endData = 0x0000000F;
-  // Legacy aliases for backward compat (callers may still use these names)
+  static const int cmdResponse = 0x00000007;
+  static const int event = 0x00000008;
+  static const int startData = 0x00000009;
+  static const int data = 0x0000000A;
+  static const int cancel = 0x0000000B;
+  static const int endData = 0x0000000C;
+
+  // Legacy / convenience aliases
+  static const int initReq = initCommandReq;
+  static const int initAck = initCommandAck;
+  static const int eventReq = initEventReq;
+  static const int eventAck = initEventAck;
   static const int req = cmdReq;
-  static const int res = endData;
+  static const int res = cmdResponse;
 }
 
 /// A single PTP-IP packet.
@@ -98,46 +95,44 @@ int ptpIpNextPacketLength(Uint8List buf) {
 }
 
 // ==========================================================================
-// PTP command / response blocks (not PTP-IP transport)
+// PTP command / response payloads (Nikon PTP/IP variant)
 // ==========================================================================
+//
+// NOTE: The Nikon variant does NOT use the standard PTP command/response
+// blocks (with length prefix and type field). Instead it uses simpler
+// payloads inside Cmd_Request / Cmd_Response packets:
+//
+// Cmd_Request payload:
+//   [unknown: u32 LE]     — always 0x00000001
+//   [opcode: u16 LE]
+//   [transactionId: u32 LE]
+//   [param1..N: u32 LE]   — as many as the operation needs (0..5)
+//
+// Cmd_Response payload:
+//   [responseCode: u16 LE]
+//   [transactionId: u32 LE]
+//   [param1..N: u32 LE]   — variable number
+//
 
-/// Standard PTP command block layout (12 + N*4 bytes):
-///   [length:u32 LE]         — total length of the block
-///   [type:u16 LE]           — 1 = command
-///   [operationCode:u16 LE]
-///   [transactionId:u32 LE]
-///   [param1..param5:u32 LE] — as many as needed (0..5)
-///
-/// Standard PTP response block layout:
-///   [length:u32 LE]
-///   [type:u16 LE]           — 2 = response
-///   [responseCode:u16 LE]
-///   [transactionId:u32 LE]
-///   [param1..param5:u32 LE] — as many as needed
-
-int _ptpBlockLength(int paramCount) => 12 + paramCount * 4;
-
-/// Build a standard PTP command block (not the PTP-IP packet wrapper).
-Uint8List buildPtpCommand({
+/// Build a Cmd_Request payload (Nikon PTP/IP variant).
+Uint8List buildCmdRequest({
   required int operationCode,
   required int transactionId,
   List<int> params = const [],
 }) {
-  final len = _ptpBlockLength(params.length);
-  final bd = ByteData(len);
-  bd.setUint32(0, len, Endian.little);
-  bd.setUint16(4, 1, Endian.little); // type 1 = Command
-  bd.setUint16(6, operationCode, Endian.little);
-  bd.setUint32(8, transactionId, Endian.little);
-  for (var i = 0; i < params.length; i++) {
-    bd.setUint32(12 + i * 4, params[i], Endian.little);
+  final b = BytesBuilder();
+  b.add(_u32le(1)); // unknown field, always 1
+  b.add(_u16le(operationCode));
+  b.add(_u32le(transactionId));
+  for (final p in params) {
+    b.add(_u32le(p));
   }
-  return bd.buffer.asUint8List();
+  return b.toBytes();
 }
 
-/// Parse a standard PTP response block.
-class PtpResponseBlock {
-  PtpResponseBlock({
+/// Parse a Cmd_Response payload (Nikon PTP/IP variant).
+class PtpCmdResponse {
+  PtpCmdResponse({
     required this.responseCode,
     required this.transactionId,
     required this.params,
@@ -148,50 +143,81 @@ class PtpResponseBlock {
 
   bool get isOk => responseCode == PtpResponse.ok;
 
-  static PtpResponseBlock parse(Uint8List data) {
-    if (data.length < 12) {
-      throw FormatException('PTP response block too short: ${data.length}B');
+  static PtpCmdResponse parse(Uint8List data) {
+    if (data.length < 6) {
+      throw FormatException('CmdResponse too short: ${data.length}B');
     }
     final bd = ByteData.sublistView(data);
-    // final len = bd.getUint32(0, Endian.little); // total length
-    // final type = bd.getUint16(4, Endian.little); // 2 = Response
-    final code = bd.getUint16(6, Endian.little);
-    final tx = bd.getUint32(8, Endian.little);
+    final code = bd.getUint16(0, Endian.little);
+    final tx = bd.getUint32(2, Endian.little);
     final params = <int>[];
-    var offset = 12;
+    var offset = 6;
     while (offset + 4 <= data.length) {
       params.add(bd.getUint32(offset, Endian.little));
       offset += 4;
     }
-    return PtpResponseBlock(responseCode: code, transactionId: tx, params: params);
+    return PtpCmdResponse(responseCode: code, transactionId: tx, params: params);
   }
 }
 
 // ==========================================================================
-// PTP-IP packet payload builders
+// Init packet payload builders
 // ==========================================================================
 
-/// Build an InitReq payload (PTP-IP session handshake).
+/// Build an Init_Command_Request payload.
 ///
-/// Wire layout (verified against gphoto2 ptpip.c / ptpip_init_req):
+/// Wire layout (Nikon variant, per gphoto2):
 ///   [guid: 16 bytes]
-///   [friendlyName: PTP string (u8 length + u16 UTF-16LE units)]
-///   [protocolVersion: u32 = 0x00010000 (v1.0)]
+///   [friendlyName: PTP string]
+///     PTP string = [u8 length (num chars including null)] [u16 LE chars...] [u16 LE null]
+///
+/// NOTE: The Nikon variant does NOT include a protocolVersion field
+/// at the end — adding one causes Init_Fail from the camera.
 Uint8List buildInitReq(Uint8List guid, String friendlyName) {
   final b = BytesBuilder();
   if (guid.length != 16) {
     throw ArgumentError('guid must be 16 bytes, got ${guid.length}');
   }
   b.add(guid);
-  // PTP string: [u8 numUnits][u16 LE units...], last unit is null terminator
-  // The length byte counts the number of UTF-16 units INCLUDING the null.
-  final codeUnits = _utf16leUnits(friendlyName);
-  b.addByte(codeUnits.length + 1); // +1 for null terminator
-  for (final u in codeUnits) {
+  b.add(_encodePtpString(friendlyName));
+  return b.toBytes();
+}
+
+/// Parse the connection number / session ID from Init_Command_Ack payload.
+///
+/// Wire layout:
+///   [connectionNumber: u32 LE]   — session ID to use for Init_Event_Request
+///   [guid: 16 bytes]
+///   [friendlyName: PTP string]
+int parseInitAckConnectionNumber(Uint8List payload) {
+  if (payload.length < 4) {
+    throw FormatException('InitAck too short: ${payload.length}B');
+  }
+  return ByteData.sublistView(payload).getUint32(0, Endian.little);
+}
+
+/// Build an Init_Event_Request payload.
+///
+/// Wire layout (Nikon variant):
+///   [connectionNumber: u32 LE]   — from Init_Command_Ack
+Uint8List buildInitEventReq(int connectionNumber) {
+  return _u32le(connectionNumber);
+}
+
+// ==========================================================================
+// Helpers
+// ==========================================================================
+
+/// Encode a PTP string: [u8 len][u16 LE chars...][u16 LE null terminator].
+/// Length byte counts the number of UTF-16 units INCLUDING the null.
+Uint8List _encodePtpString(String s) {
+  final b = BytesBuilder();
+  final units = _utf16leUnits(s);
+  b.addByte(units.length + 1); // +1 for null terminator unit
+  for (final u in units) {
     b.add(_u16le(u));
   }
   b.add(_u16le(0)); // null terminator
-  b.add(_u32le(0x00010000)); // protocol version 1.0
   return b.toBytes();
 }
 
@@ -201,27 +227,13 @@ List<int> _utf16leUnits(String s) {
     if (c <= 0xFFFF) {
       units.add(c);
     } else {
-      // surrogate pair
+      // surrogate pair for code points above BMP
       final cp = c - 0x10000;
       units.add(0xD800 + (cp >> 10));
       units.add(0xDC00 + (cp & 0x3FF));
     }
   }
   return units;
-}
-
-/// Parse InitAck payload → (connectionNumber: u32).
-///
-/// Wire layout (gphoto2 ptpip.c ptpip_init_ack):
-///   [connectionNumber: u32]
-///   [guid: 16 bytes]
-///   [friendlyName: PTP string]
-///   [protocolVersion: u32]
-int parseInitAckConnectionNumber(Uint8List payload) {
-  if (payload.length < 4) {
-    throw FormatException('InitAck too short: ${payload.length}B');
-  }
-  return ByteData.sublistView(payload).getUint32(0, Endian.little);
 }
 
 Uint8List _u16le(int v) =>
