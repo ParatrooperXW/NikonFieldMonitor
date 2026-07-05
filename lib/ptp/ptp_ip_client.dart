@@ -275,7 +275,7 @@ class PtpIpClient {
           if (pkt.payload.length >= 4) {
             dataBuilder.add(pkt.payload.sublist(4));
           }
-          continue _nextPacket;
+          break;
         case PtpIpPacketType.endData:
           final resp = _extractEndDataResponse(pkt.payload, dataBuilder);
           if (resp.transactionId != tx) {
@@ -296,7 +296,6 @@ class PtpIpClient {
         default:
           break;
       }
-      _nextPacket:;
     }
   }
 
