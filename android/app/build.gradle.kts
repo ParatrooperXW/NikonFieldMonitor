@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.nikonfieldmonitor"
-    compileSdk = 34
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -23,9 +23,9 @@ android {
         applicationId = "com.nikonfieldmonitor"
         // minSdk 21 per spec: USB OTG + PTP/IP baseline.
         minSdk = flutter.minSdkVersion
-        targetSdk = 34
-        versionCode = flutter.versionCode().toInt()
-        versionName = flutter.versionName()
+        targetSdk = 35
+        versionCode = flutter.versionCode.toInt()
+        versionName = flutter.versionName
     }
 
     buildTypes {
