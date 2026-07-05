@@ -1,7 +1,7 @@
 name: nikon_field_monitor
 description: "NikonFieldMonitor - Professional wireless/USB live view monitor & remote controller for Nikon Z-series and PTP/IP cameras."
 publish_to: "none"
-version: 1.0.0+1
+version: 1.0.6+6
 license: MIT
 
 environment:
